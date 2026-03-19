@@ -31,7 +31,6 @@ Rules:
 - Return ONLY the JSON object, nothing else
 """
 
-# ✅ SAFE: create client only when needed
 def get_client():
     api_key = os.getenv("GROK_API_KEY")
 
@@ -47,7 +46,7 @@ def get_client():
 def analyze_report(raw_text: str) -> dict:
     """Send OCR text to Grok for structured extraction."""
     try:
-        client = get_client()  # ✅ initialize here (not globally)
+        client = get_client() 
 
         # Truncate if too long
         text = raw_text[:8000] if len(raw_text) > 8000 else raw_text
@@ -64,14 +63,12 @@ def analyze_report(raw_text: str) -> dict:
 
         content = response.choices[0].message.content.strip()
 
-        # Remove markdown formatting if present
         content = re.sub(r"^```json\s*", "", content)
         content = re.sub(r"```$", "", content)
         content = content.strip()
 
         result = json.loads(content)
 
-        # ✅ Ensure all required fields exist
         defaults = {
             "summary": "", "doctorName": "", "hospitalName": "",
             "reportDate": "", "diagnosis": "", "medicines": [],
@@ -82,7 +79,6 @@ def analyze_report(raw_text: str) -> dict:
             if key not in result:
                 result[key] = default
 
-        # ✅ Validate test status values
         valid_statuses = {"normal", "high", "low", "unknown"}
 
         for test in result.get("testResults", []):

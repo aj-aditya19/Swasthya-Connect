@@ -27,23 +27,20 @@ def health():
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...), file_type: str = Form("pdf")):
     try:
-        # Save uploaded file to temp
         suffix = ".pdf" if file_type == "pdf" else ".png"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
 
-        # Step 1: OCR
         raw_text = extract_text(tmp_path, file_type)
         os.unlink(tmp_path)
 
         if not raw_text.strip():
             raise HTTPException(status_code=422, detail="Could not extract text from file")
 
-        # Step 2: Grok analysis
         result = analyze_report(raw_text)
-        result["rawText"] = raw_text[:3000]  # keep first 3000 chars of raw
+        result["rawText"] = raw_text[:3000] 
         return result
 
     except HTTPException:

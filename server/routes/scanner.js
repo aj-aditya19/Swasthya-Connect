@@ -30,7 +30,7 @@ const PROMPTS = {
 
   terms: `You are a legal expert. Analyse this terms & conditions document and return JSON only:
 {
-  "summary": "what this document is about in 2 simple sentences",
+  "summary": "what this document is about in simple sentences focus on points",
   "keyPoints": ["most important point 1", "most important point 2", "most important point 3", "most important point 4"],
   "medicines": [],
   "warning": "any concerning clause the user should know about or empty string"
@@ -38,7 +38,7 @@ const PROMPTS = {
 
   report: `You are a doctor. Analyse this medical report image and return JSON only:
 {
-  "summary": "what this report shows in 2 simple sentences",
+  "summary": "what this report shows in simple sentences, in points",
   "keyPoints": ["key finding 1", "key finding 2", "key finding 3"],
   "medicines": [],
   "warning": "any abnormal value or concern or empty string"
@@ -46,7 +46,7 @@ const PROMPTS = {
 
   insurance: `You are an insurance expert. Analyse this insurance document and return JSON only:
 {
-  "summary": "what this insurance covers in 2 simple sentences",
+  "summary": "what this insurance covers in simple sentences in points",
   "keyPoints": ["coverage point 1", "coverage point 2", "exclusion to note", "claim process"],
   "medicines": [],
   "warning": "any important exclusion or limitation or empty string"
@@ -54,7 +54,7 @@ const PROMPTS = {
 
   bill: `You are a medical billing expert. Analyse this hospital bill and return JSON only:
 {
-  "summary": "summary of this bill in 2 simple sentences",
+  "summary": "summary of this bill in 2 simple sentences in points",
   "keyPoints": ["total amount", "major charges", "insurance claimable items"],
   "medicines": [],
   "warning": "any overcharge concern or empty string"
@@ -62,7 +62,7 @@ const PROMPTS = {
 
   other: `Analyse this document image and return JSON only:
 {
-  "summary": "what this document is about in 2 simple sentences",
+  "summary": "what this document is about in simple sentences, in points",
   "keyPoints": ["key point 1", "key point 2", "key point 3"],
   "medicines": [],
   "warning": "any important information or empty string"
@@ -71,17 +71,17 @@ const PROMPTS = {
 
 router.post("/analyse", protect, upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
 
     const category = req.body.category || "other";
     const prompt = PROMPTS[category] || PROMPTS.other;
 
-    // Read image as base64
     const imageBuffer = fs.readFileSync(req.file.path);
     const base64Image = imageBuffer.toString("base64");
     const mimeType = req.file.mimetype || "image/jpeg";
 
-    // Call Groq with vision
     const completion = await getClient().chat.completions.create({
       model: "meta-llama/llama-4-scout-17b-16e-instruct",
       messages: [
@@ -100,22 +100,18 @@ router.post("/analyse", protect, upload.single("file"), async (req, res) => {
       temperature: 0.1,
     });
 
-    // Clean and parse JSON
     let content = completion.choices[0].message.content.trim();
 
-    // Remove all markdown code fences
     content = content.replace(/```json\s*/gi, "");
     content = content.replace(/```\s*/gi, "");
     content = content.trim();
 
-    // Extract JSON object if there's text around it
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("No JSON found in response");
     content = jsonMatch[0];
 
     const result = JSON.parse(content);
 
-    // Cleanup temp file
     fs.unlinkSync(req.file.path);
 
     res.json(result);

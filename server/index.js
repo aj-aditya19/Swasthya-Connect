@@ -7,10 +7,8 @@ const connectDB = require("./config/db");
 
 const app = express();
 
-// Connect to MongoDB
 connectDB();
 
-// Middleware
 app.use(
   cors({
     origin: process.env.CLIENT_URL || "http://localhost:5173",
@@ -19,18 +17,13 @@ app.use(
 );
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
-// Serve uploaded files statically
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-// Rate limiting for auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   message: "Too many requests, please try again later.",
 });
 
-// Routes
 app.use("/api/auth", authLimiter, require("./routes/auth"));
 app.use("/api/reports", require("./routes/reports"));
 app.use("/api/chat", require("./routes/chat"));
@@ -40,12 +33,9 @@ app.get("/api/health", (req, res) =>
   res.json({ status: "ok", timestamp: new Date() }),
 );
 app.use("/api/scanner", require("./routes/scanner"));
-
-// Start reminder cron
 const { startReminderCron } = require("./routes/reminders");
 startReminderCron();
 
-// Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res

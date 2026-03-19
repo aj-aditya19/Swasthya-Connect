@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+//use for loading, error
+import { useState, useEffect, useCallback } from "react";
 
 export function useAsync(asyncFn, deps = []) {
-  const [data, setData]       = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
+  const [error, setError] = useState(null);
 
   const execute = useCallback(async () => {
     setLoading(true);
@@ -12,20 +13,24 @@ export function useAsync(asyncFn, deps = []) {
       const res = await asyncFn();
       setData(res.data);
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Something went wrong');
+      setError(
+        err.response?.data?.message || err.message || "Something went wrong",
+      );
     } finally {
       setLoading(false);
     }
   }, deps);
 
-  useEffect(() => { execute(); }, [execute]);
+  useEffect(() => {
+    execute();
+  }, [execute]);
 
   return { data, loading, error, refetch: execute };
 }
 
 export function useToast() {
   const [toast, setToast] = useState(null);
-  const show = (msg, type = 'success') => {
+  const show = (msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   };

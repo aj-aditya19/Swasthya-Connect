@@ -1,120 +1,147 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const path = require('path');
-const fs = require('fs');
-const axios = require('axios');
-const { protect } = require('../middleware/auth');
-const upload = require('../middleware/upload');
-const MedicalReport = require('../models/MedicalReport');
+const path = require("path");
+const fs = require("fs");
+const axios = require("axios");
+const { protect } = require("../middleware/auth");
+const upload = require("../middleware/upload");
+const MedicalReport = require("../models/MedicalReport");
 
-// GET /api/reports — get all reports for user
-router.get('/', protect, async (req, res) => {
+router.get("/", protect, async (req, res) => {
   try {
     let doc = await MedicalReport.findOne({ userId: req.user._id });
-    if (!doc) return res.json({ data: {} });
-    // Convert Map to plain object
+    if (!doc) {
+      return res.json({ data: {} });
+    }
     const data = {};
     for (const [key, val] of doc.data.entries()) {
       data[key] = val;
     }
     res.json({ data });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 
-// POST /api/reports/upload — upload a report file
-router.post('/upload', protect, upload.single('report'), async (req, res) => {
+router.post("/upload", protect, upload.single("report"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
     const { reportName } = req.body;
-    if (!reportName) return res.status(400).json({ message: 'Report name is required' });
+    if (!reportName) {
+      return res.status(400).json({ message: "Report name is required" });
+    }
 
-    const slug = reportName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') + '_' + Date.now();
-    const fileType = req.file.mimetype === 'application/pdf' ? 'pdf' : 'image';
+    const slug =
+      reportName
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .replace(/[^a-z0-9_]/g, "") +
+      "_" +
+      Date.now();
+    const fileType = req.file.mimetype === "application/pdf" ? "pdf" : "image";
     const fileUrl = `/uploads/${req.user._id}/${req.file.filename}`;
-
-    // Upsert the user's report document
     let doc = await MedicalReport.findOne({ userId: req.user._id });
-    if (!doc) doc = new MedicalReport({ userId: req.user._id, data: new Map() });
+    if (!doc)
+      doc = new MedicalReport({ userId: req.user._id, data: new Map() });
 
     doc.data.set(slug, {
       reportName,
       fileType,
       link: fileUrl,
-      status: 'pending',
+      status: "pending",
       uploadedAt: new Date(),
-      extractedData: { summary: '', doctorName: '', hospitalName: '', reportDate: '', diagnosis: '', medicines: [], testResults: [], advice: '', followUpDate: '', rawText: '' },
+      extractedData: {
+        summary: "",
+        doctorName: "",
+        hospitalName: "",
+        reportDate: "",
+        diagnosis: "",
+        medicines: [],
+        testResults: [],
+        advice: "",
+        followUpDate: "",
+        rawText: "",
+      },
     });
     await doc.save();
+    triggerAnalysis(
+      req.user._id.toString(),
+      slug,
+      req.file.path,
+      fileType,
+      doc._id,
+    ).catch(console.error);
 
-    // Trigger AI analysis asynchronously (don't await)
-    triggerAnalysis(req.user._id.toString(), slug, req.file.path, fileType, doc._id).catch(console.error);
-
-    res.status(201).json({ message: 'Report uploaded. AI analysis started.', slug });
+    res
+      .status(201)
+      .json({ message: "Report uploaded. AI analysis started.", slug });
   } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ message: 'Server error', error: err.message });
+    console.error("Upload error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 
 async function triggerAnalysis(userId, slug, filePath, fileType, docId) {
   try {
-    // Mark as processing
     await MedicalReport.updateOne(
-      { userId, [`data.${slug}.status`]: 'pending' },
-      { $set: { [`data.${slug}.status`]: 'processing' } }
+      { userId, [`data.${slug}.status`]: "pending" },
+      { $set: { [`data.${slug}.status`]: "processing" } },
     );
 
-    // Call Python AI service
-    const FormData = require('form-data');
+    const FormData = require("form-data");
     const form = new FormData();
-    form.append('file', fs.createReadStream(filePath));
-    form.append('file_type', fileType);
+    form.append("file", fs.createReadStream(filePath));
+    form.append("file_type", fileType);
 
-    const response = await axios.post(`${process.env.AI_SERVICE_URL}/analyze`, form, {
-      headers: form.getHeaders(),
-      timeout: 120000, // 2 min
-    });
+    const response = await axios.post(
+      `${process.env.AI_SERVICE_URL}/analyze`,
+      form,
+      {
+        headers: form.getHeaders(),
+        timeout: 120000,
+      },
+    );
 
     const result = response.data;
 
-    // Update with analysis results
     const doc = await MedicalReport.findOne({ userId });
     if (doc && doc.data.has(slug)) {
       const entry = doc.data.get(slug);
-      entry.status = 'done';
+      entry.status = "done";
       entry.extractedData = result;
       doc.data.set(slug, entry);
       await doc.save();
     }
   } catch (err) {
-    console.error('AI analysis error:', err.message);
+    console.error("AI analysis error:", err.message);
     await MedicalReport.updateOne(
       { userId },
-      { $set: { [`data.${slug}.status`]: 'failed' } }
+      { $set: { [`data.${slug}.status`]: "failed" } },
     );
   }
 }
 
-// DELETE /api/reports/:slug
-router.delete('/:slug', protect, async (req, res) => {
+router.delete("/:slug", protect, async (req, res) => {
   try {
     const doc = await MedicalReport.findOne({ userId: req.user._id });
-    if (!doc || !doc.data.has(req.params.slug)) return res.status(404).json({ message: 'Report not found' });
+    if (!doc || !doc.data.has(req.params.slug)) {
+      return res.status(404).json({ message: "Report not found" });
+    }
 
     const report = doc.data.get(req.params.slug);
 
-    // Delete local file
-    const localPath = path.join(__dirname, '..', report.link);
-    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-    // Cloudinary delete: await cloudinary.uploader.destroy(report.cloudinaryPublicId);
+    const localPath = path.join(__dirname, "..", report.link);
+    if (fs.existsSync(localPath)) {
+      fs.unlinkSync(localPath);
+    }
 
     doc.data.delete(req.params.slug);
     await doc.save();
-    res.json({ message: 'Report deleted' });
+    res.json({ message: "Report deleted" });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 

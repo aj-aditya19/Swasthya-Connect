@@ -19,8 +19,23 @@ function formatTime(ts) {
   });
 }
 
+function speak(text, lang = "hi-IN") {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = lang;
+  utter.rate = 0.95;
+  utter.pitch = 1;
+  window.speechSynthesis.speak(utter);
+}
+
+function stopSpeaking() {
+  window.speechSynthesis?.cancel();
+}
+
 export default function Chat() {
   const { user } = useAuth();
+
   const [sessionId] = useState(
     () =>
       localStorage.getItem("chatSessionId") ||
@@ -30,15 +45,18 @@ export default function Chat() {
         return id;
       })(),
   );
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
   const [typing, setTyping] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const listeningRef = useRef(false); // sync flag — state updates async hoti hain
 
   useEffect(() => {
-    // Load session history
     chatAPI
       .getSession(sessionId)
       .then((r) => {
@@ -71,10 +89,83 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
+  // ── KEY FIX: har press pe bilkul naya SpeechRecognition instance ──────
+  // Ek hi instance ko reuse karne se onresult silently fail ho jaata hai
+  // kyunki browser us instance ko "already used" mark kar leta hai.
+  const toggleMic = () => {
+    if (listeningRef.current) {
+      listeningRef.current = false;
+      setListening(false);
+      return;
+    }
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      alert("Aapka browser mic support nahi karta. Chrome ya Edge use karein.");
+      return;
+    }
+
+    stopSpeaking();
+
+    const rec = new SR(); // fresh instance every time
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = user?.preferredLanguage === "en" ? "en-IN" : "hi-IN";
+
+    rec.onstart = () => {
+      console.log("[MediBot Mic] Started, lang:", rec.lang);
+    };
+
+    rec.onresult = (e) => {
+      console.log("[MediBot Mic] Result received:", e.results);
+      const transcript = e.results[0]?.[0]?.transcript?.trim();
+      console.log("[MediBot Mic] Transcript:", transcript);
+      if (transcript) {
+        setInput(transcript);
+      }
+      listeningRef.current = false;
+      setListening(false);
+    };
+
+    rec.onspeechend = () => {
+      console.log("[MediBot Mic] Speech ended, stopping...");
+      rec.stop();
+    };
+
+    rec.onerror = (e) => {
+      console.error("[MediBot Mic] Error:", e.error);
+      if (e.error === "not-allowed") {
+        alert(
+          "Mic permission deny hai. Browser address bar mein lock icon click karke mic allow karein.",
+        );
+      } else if (e.error === "no-speech") {
+        alert("Koi awaaz nahi aayi. Thoda aur kareeb bolke try karein.");
+      } else {
+        alert("Mic error aaya: " + e.error);
+      }
+      listeningRef.current = false;
+      setListening(false);
+    };
+
+    rec.onend = () => {
+      console.log("[MediBot Mic] Ended");
+      listeningRef.current = false;
+      setListening(false);
+    };
+
+    listeningRef.current = true;
+    setListening(true);
+    rec.start();
+  };
+  // ─────────────────────────────────────────────────────────────────────
+
   const send = async (text) => {
     const msg = text || input.trim();
     if (!msg || typing) return;
+
     setInput("");
+    stopSpeaking();
+
     const userMsg = {
       role: "user",
       content: msg,
@@ -82,21 +173,29 @@ export default function Chat() {
     };
     setMessages((prev) => [...prev, userMsg]);
     setTyping(true);
+
     try {
       const res = await chatAPI.sendMessage({
         message: msg,
         sessionId,
         language: user?.preferredLanguage || "en",
       });
+      const reply = res.data.reply;
+
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: res.data.reply,
+          content: reply,
           timestamp: new Date().toISOString(),
         },
       ]);
-    } catch (err) {
+
+      if (ttsEnabled) {
+        const lang = user?.preferredLanguage === "en" ? "en-IN" : "hi-IN";
+        speak(reply, lang);
+      }
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -117,6 +216,7 @@ export default function Chat() {
       !window.confirm("Start a new chat? Current conversation will be cleared.")
     )
       return;
+    stopSpeaking();
     try {
       await chatAPI.clearSession(sessionId);
     } catch {}
@@ -153,11 +253,20 @@ export default function Chat() {
         <span style={{ fontSize: 12, color: "var(--text3)" }}>
           Powered by LLaMA AI · Hindi & English
         </span>
+
         <button
           className="btn btn-ghost btn-sm"
+          title={ttsEnabled ? "Mute MediBot voice" : "Unmute MediBot voice"}
+          onClick={() => {
+            setTtsEnabled((v) => !v);
+            if (ttsEnabled) stopSpeaking();
+          }}
           style={{ marginLeft: "auto" }}
-          onClick={newChat}
         >
+          {ttsEnabled ? "🔊" : "🔇"}
+        </button>
+
+        <button className="btn btn-ghost btn-sm" onClick={newChat}>
           New chat
         </button>
       </div>
@@ -169,11 +278,36 @@ export default function Chat() {
               {msg.role === "assistant" ? "MB" : initials}
             </div>
             <div>
-              <div className="msg-bubble">{msg.content}</div>
+              <div className="msg-bubble">
+                {msg.content}
+                {msg.role === "assistant" && (
+                  <button
+                    onClick={() =>
+                      speak(
+                        msg.content,
+                        user?.preferredLanguage === "en" ? "en-IN" : "hi-IN",
+                      )
+                    }
+                    title="Replay voice"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      marginLeft: 6,
+                      opacity: 0.55,
+                      verticalAlign: "middle",
+                    }}
+                  >
+                    🔉
+                  </button>
+                )}
+              </div>
               <div className="msg-time">{formatTime(msg.timestamp)}</div>
             </div>
           </div>
         ))}
+
         {typing && (
           <div className="msg msg-assistant fade-in">
             <div className="msg-avatar">MB</div>
@@ -210,16 +344,38 @@ export default function Chat() {
       </div>
 
       <div className="chat-input-bar">
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={toggleMic}
+          disabled={typing}
+          title={listening ? "Stop listening" : "Speak your question"}
+          style={{
+            borderRadius: "50%",
+            width: 36,
+            height: 36,
+            padding: 0,
+            flexShrink: 0,
+            background: listening ? "var(--red, #fee2e2)" : undefined,
+          }}
+        >
+          {listening ? "⏹" : "🎤"}
+        </button>
+
         <textarea
           ref={inputRef}
           className="chat-input"
-          placeholder="Apna sawaal yahan likhein (Hindi or English)..."
+          placeholder={
+            listening
+              ? "Listening... bol rahe hain..."
+              : "Apna sawaal yahan likhein (Hindi or English)..."
+          }
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKey}
           rows={1}
           disabled={typing}
         />
+
         <button
           className="chat-send"
           onClick={() => send()}

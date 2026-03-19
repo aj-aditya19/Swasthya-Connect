@@ -6,7 +6,6 @@ const { protect } = require("../middleware/auth");
 const ChatSession = require("../models/ChatSession");
 const MedicalReport = require("../models/MedicalReport");
 
-// Lazy Grok initialization
 let _grok = null;
 function getGrok() {
   if (!_grok) {
@@ -59,7 +58,6 @@ router.get("/session/:sessionId", protect, async (req, res) => {
   }
 });
 
-// ✅ POST message (main AI route)
 router.post("/message", protect, async (req, res) => {
   try {
     const { message, sessionId, language = "en" } = req.body;
@@ -70,7 +68,6 @@ router.post("/message", protect, async (req, res) => {
 
     const sid = sessionId || uuidv4();
 
-    // Get or create session
     let session = await ChatSession.findOne({
       userId: req.user._id,
       sessionId: sid,
@@ -85,13 +82,11 @@ router.post("/message", protect, async (req, res) => {
       });
     }
 
-    // Last 10 messages for context
     const historyMessages = session.messages.slice(-10).map((m) => ({
       role: m.role,
       content: m.content,
     }));
 
-    // ✅ Fetch latest medical report (safe)
     let reportContext = "";
 
     try {
@@ -127,17 +122,14 @@ Medicines: ${medicines.map((m) => `${m.name} ${m.dosage}`).join(", ") || "N/A"}
       console.error("Report context error:", e.message);
     }
 
-    // ✅ Build AI messages
     const grokMessages = [
       { role: "system", content: SYSTEM_PROMPT + reportContext },
       ...historyMessages,
       { role: "user", content: message },
     ];
 
-    // ✅ Initialize Grok properly
     const grok = getGrok();
 
-    // ✅ Call Grok API
     const completion = await grok.chat.completions.create({
       model: process.env.GROK_MODEL || "grok-2-latest",
       messages: grokMessages,
@@ -149,7 +141,6 @@ Medicines: ${medicines.map((m) => `${m.name} ${m.dosage}`).join(", ") || "N/A"}
       completion?.choices?.[0]?.message?.content ||
       "Sorry, I couldn't generate a response.";
 
-    // ✅ Save messages
     session.messages.push({
       role: "user",
       content: message,
@@ -176,7 +167,6 @@ Medicines: ${medicines.map((m) => `${m.name} ${m.dosage}`).join(", ") || "N/A"}
   }
 });
 
-// ✅ DELETE session
 router.delete("/session/:sessionId", protect, async (req, res) => {
   try {
     await ChatSession.deleteOne({

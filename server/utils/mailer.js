@@ -30,7 +30,13 @@ async function sendReminderEmail(to, name, medicines) {
     from: `"MediSetu" <${process.env.GMAIL_USER}>`,
     to,
     subject: `MediSetu Reminder`,
-    text: `Time to take your medicine. Be aware about your health`,
+    text: `Hi ${name}, time to take your medicine: ${medicines.map((m) => `${m.medicineName} ${m.dosage} at ${m.time}`).join(", ")}`,
+    html: `
+      <p>Hi <strong>${name}</strong>,</p>
+      <p>Time to take your medicine:</p>
+      <ul>${medList}</ul>
+      <p>Stay healthy! 💊</p>
+    `,
   });
 }
 

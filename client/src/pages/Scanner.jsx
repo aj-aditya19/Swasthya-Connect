@@ -18,10 +18,20 @@ const POINTS_MAP = {
   other: 20,
 };
 
+const LANGUAGES = [
+  { code: "en", label: "English", flag: "🇬🇧" },
+  { code: "hi", label: "हिंदी", flag: "🇮🇳" },
+  { code: "ta", label: "தமிழ்", flag: "🇮🇳" },
+  { code: "bn", label: "বাংলা", flag: "🇮🇳" },
+  { code: "te", label: "తెలుగు", flag: "🇮🇳" },
+  { code: "mr", label: "मराठी", flag: "🇮🇳" },
+];
+
 export default function Scanner() {
   const [image, setImage] = useState(null);
   const [preview, setPreview] = useState(null);
   const [category, setCategory] = useState("medicine");
+  const [language, setLanguage] = useState("en");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [points, setPoints] = useState(0);
@@ -46,6 +56,7 @@ export default function Scanner() {
       const formData = new FormData();
       formData.append("file", image);
       formData.append("category", category);
+      formData.append("language", language); // ← send language to backend
 
       const token = localStorage.getItem("token");
       const res = await fetch("/api/scanner/analyse", {
@@ -68,6 +79,8 @@ export default function Scanner() {
     setPreview(null);
     setResult(null);
   };
+
+  const selectedLang = LANGUAGES.find((l) => l.code === language);
 
   return (
     <div className="page-body fade-in">
@@ -94,7 +107,7 @@ export default function Scanner() {
       </div>
 
       {/* Category selector */}
-      <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-title">What are you scanning?</div>
         <div
           style={{
@@ -137,6 +150,46 @@ export default function Scanner() {
               >
                 +{POINTS_MAP[cat.key]} pts
               </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Language Selector ── */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-title">Analysis Language</div>
+        <div
+          style={{ fontSize: 12.5, color: "var(--text3)", marginBottom: 12 }}
+        >
+          AI will explain the results in your chosen language
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {LANGUAGES.map((lang) => (
+            <button
+              key={lang.code}
+              onClick={() => setLanguage(lang.code)}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 20,
+                border: `2px solid ${language === lang.code ? "var(--accent)" : "var(--border)"}`,
+                background:
+                  language === lang.code
+                    ? "var(--accent-light)"
+                    : "var(--surface2)",
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: language === lang.code ? 700 : 500,
+                color:
+                  language === lang.code ? "var(--accent)" : "var(--text2)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "all .15s",
+                fontFamily: "var(--font)",
+              }}
+            >
+              <span>{lang.flag}</span>
+              <span>{lang.label}</span>
             </button>
           ))}
         </div>
@@ -210,7 +263,32 @@ export default function Scanner() {
                   background: "var(--surface2)",
                 }}
               />
-              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+
+              {/* Selected language indicator */}
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "6px 12px",
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  fontSize: 12.5,
+                  color: "var(--text2)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span>{selectedLang?.flag}</span>
+                <span>
+                  Result will be in{" "}
+                  <strong style={{ color: "var(--accent)" }}>
+                    {selectedLang?.label}
+                  </strong>
+                </span>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                 <button
                   className="btn btn-primary"
                   style={{ flex: 1, justifyContent: "center" }}
@@ -236,7 +314,35 @@ export default function Scanner() {
 
         {/* RIGHT — Result */}
         <div className="card" style={{ minHeight: 360 }}>
-          <div className="card-title">Analysis Result</div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 14,
+            }}
+          >
+            <div className="card-title" style={{ marginBottom: 0 }}>
+              Analysis Result
+            </div>
+            {result && !result.error && (
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "var(--text3)",
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 20,
+                  padding: "3px 10px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                {selectedLang?.flag} {selectedLang?.label}
+              </div>
+            )}
+          </div>
 
           {!result && !loading && (
             <div
@@ -270,14 +376,13 @@ export default function Scanner() {
               <div
                 style={{ fontSize: 12, color: "var(--text3)", marginTop: 6 }}
               >
-                AI is analysing the content
+                Generating response in {selectedLang?.label}
               </div>
             </div>
           )}
 
           {result && !result.error && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {/* Points earned */}
               <div
                 style={{
                   background: "var(--green-bg)",
@@ -301,7 +406,6 @@ export default function Scanner() {
                 </span>
               </div>
 
-              {/* Summary */}
               {result.summary && (
                 <div>
                   <div
@@ -328,7 +432,6 @@ export default function Scanner() {
                 </div>
               )}
 
-              {/* Key points */}
               {result.keyPoints?.length > 0 && (
                 <div>
                   <div
@@ -379,7 +482,6 @@ export default function Scanner() {
                 </div>
               )}
 
-              {/* Warning */}
               {result.warning && (
                 <div
                   style={{
@@ -395,7 +497,6 @@ export default function Scanner() {
                 </div>
               )}
 
-              {/* Category specific */}
               {result.medicines?.length > 0 && (
                 <div>
                   <div

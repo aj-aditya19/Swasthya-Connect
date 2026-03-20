@@ -10,7 +10,7 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-  storage: multer.memoryStorage(), // keep file in RAM, stream to Cloudinary
+  storage: multer.memoryStorage(),
   fileFilter,
   limits: { fileSize: 10 * 1024 * 1024 },
 });

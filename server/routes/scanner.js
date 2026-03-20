@@ -19,8 +19,21 @@ function getClient() {
   return _client;
 }
 
+// ── Language name map for prompt injection ──────────────────────────
+const LANGUAGE_NAMES = {
+  en: "English",
+  hi: "Hindi (हिंदी)",
+  ta: "Tamil (தமிழ்)",
+  bn: "Bengali (বাংলা)",
+  te: "Telugu (తెలుగు)",
+  mr: "Marathi (मराठी)",
+};
+
+// ── Category prompt templates ────────────────────────────────────────
+// {LANGUAGE} placeholder gets replaced at runtime
 const PROMPTS = {
-  medicine: `You are a pharmacist. Analyse this medicine image and return JSON only:
+  medicine: `You are a pharmacist. Analyse this medicine image and return JSON only.
+IMPORTANT: Write ALL text values (summary, keyPoints, warning, medicine names and uses) in {LANGUAGE}.
 {
   "summary": "what this medicine is for in 2 simple sentences",
   "keyPoints": ["how to take it", "common side effects", "when to avoid"],
@@ -28,7 +41,8 @@ const PROMPTS = {
   "warning": "any important warning or empty string"
 }`,
 
-  terms: `You are a legal expert. Analyse this terms & conditions document and return JSON only:
+  terms: `You are a legal expert. Analyse this terms & conditions document and return JSON only.
+IMPORTANT: Write ALL text values (summary, keyPoints, warning) in {LANGUAGE}.
 {
   "summary": "what this document is about in simple sentences focus on points",
   "keyPoints": ["most important point 1", "most important point 2", "most important point 3", "most important point 4"],
@@ -36,7 +50,8 @@ const PROMPTS = {
   "warning": "any concerning clause the user should know about or empty string"
 }`,
 
-  report: `You are a doctor. Analyse this medical report image and return JSON only:
+  report: `You are a doctor. Analyse this medical report image and return JSON only.
+IMPORTANT: Write ALL text values (summary, keyPoints, warning) in {LANGUAGE}.
 {
   "summary": "what this report shows in simple sentences, in points",
   "keyPoints": ["key finding 1", "key finding 2", "key finding 3"],
@@ -44,7 +59,8 @@ const PROMPTS = {
   "warning": "any abnormal value or concern or empty string"
 }`,
 
-  insurance: `You are an insurance expert. Analyse this insurance document and return JSON only:
+  insurance: `You are an insurance expert. Analyse this insurance document and return JSON only.
+IMPORTANT: Write ALL text values (summary, keyPoints, warning) in {LANGUAGE}.
 {
   "summary": "what this insurance covers in simple sentences in points",
   "keyPoints": ["coverage point 1", "coverage point 2", "exclusion to note", "claim process"],
@@ -52,7 +68,8 @@ const PROMPTS = {
   "warning": "any important exclusion or limitation or empty string"
 }`,
 
-  bill: `You are a medical billing expert. Analyse this hospital bill and return JSON only:
+  bill: `You are a medical billing expert. Analyse this hospital bill and return JSON only.
+IMPORTANT: Write ALL text values (summary, keyPoints, warning) in {LANGUAGE}.
 {
   "summary": "summary of this bill in 2 simple sentences in points",
   "keyPoints": ["total amount", "major charges", "insurance claimable items"],
@@ -60,7 +77,8 @@ const PROMPTS = {
   "warning": "any overcharge concern or empty string"
 }`,
 
-  other: `Analyse this document image and return JSON only:
+  other: `Analyse this document image and return JSON only.
+IMPORTANT: Write ALL text values (summary, keyPoints, warning) in {LANGUAGE}.
 {
   "summary": "what this document is about in simple sentences, in points",
   "keyPoints": ["key point 1", "key point 2", "key point 3"],
@@ -69,6 +87,14 @@ const PROMPTS = {
 }`,
 };
 
+// ── Build final prompt with language injected ────────────────────────
+function buildPrompt(category, languageCode) {
+  const template = PROMPTS[category] || PROMPTS.other;
+  const languageName = LANGUAGE_NAMES[languageCode] || "English";
+  return template.replace(/\{LANGUAGE\}/g, languageName);
+}
+
+// ── Route ────────────────────────────────────────────────────────────
 router.post("/analyse", protect, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -76,7 +102,8 @@ router.post("/analyse", protect, upload.single("file"), async (req, res) => {
     }
 
     const category = req.body.category || "other";
-    const prompt = PROMPTS[category] || PROMPTS.other;
+    const language = req.body.language || "en"; // ← read language from request
+    const prompt = buildPrompt(category, language);
 
     const imageBuffer = fs.readFileSync(req.file.path);
     const base64Image = imageBuffer.toString("base64");
@@ -102,6 +129,7 @@ router.post("/analyse", protect, upload.single("file"), async (req, res) => {
 
     let content = completion.choices[0].message.content.trim();
 
+    // Strip markdown code fences if any
     content = content.replace(/```json\s*/gi, "");
     content = content.replace(/```\s*/gi, "");
     content = content.trim();

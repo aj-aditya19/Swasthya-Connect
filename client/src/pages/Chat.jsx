@@ -54,7 +54,7 @@ export default function Chat() {
 
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
-  const listeningRef = useRef(false); // sync flag — state updates async hoti hain
+  const listeningRef = useRef(false);
 
   useEffect(() => {
     chatAPI
@@ -89,9 +89,6 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
-  // ── KEY FIX: har press pe bilkul naya SpeechRecognition instance ──────
-  // Ek hi instance ko reuse karne se onresult silently fail ho jaata hai
-  // kyunki browser us instance ko "already used" mark kar leta hai.
   const toggleMic = () => {
     if (listeningRef.current) {
       listeningRef.current = false;
@@ -107,7 +104,7 @@ export default function Chat() {
 
     stopSpeaking();
 
-    const rec = new SR(); // fresh instance every time
+    const rec = new SR();
     rec.continuous = false;
     rec.interimResults = false;
     rec.lang = user?.preferredLanguage === "en" ? "en-IN" : "hi-IN";
@@ -157,7 +154,6 @@ export default function Chat() {
     setListening(true);
     rec.start();
   };
-  // ─────────────────────────────────────────────────────────────────────
 
   const send = async (text) => {
     const msg = text || input.trim();

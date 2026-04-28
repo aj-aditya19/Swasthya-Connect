@@ -37,6 +37,20 @@ app.get("/api/health", (req, res) =>
 const { startReminderCron } = require("./routes/reminders");
 startReminderCron();
 
+const path = require("path");
+
+// Serve client static files (built with Vite) in production
+if (process.env.NODE_ENV === "production") {
+  // Deployment expects built files at client/dist/public
+  const clientDist = path.join(__dirname, "..", "client", "dist", "public");
+  app.use(express.static(clientDist));
+
+  // SPA fallback: serve index.html for any unknown route (except API routes)
+  app.get("*(?!/api/*)", (req, res) => {
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+}
+
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res
